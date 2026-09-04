@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -78,7 +79,7 @@ SENSOR_TYPES: tuple[GoatbotSensorEntityDescription, ...] = (
     GoatbotSensorEntityDescription(
         key="firmware_version",
         translation_key="firmware_version",
-        entity_category="diagnostic",
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.get("state", {}).get("data", {}).get("version"),
     ),
 )
