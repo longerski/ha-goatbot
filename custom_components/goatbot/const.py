@@ -1,0 +1,18 @@
+"""Constants for the Goatbot integration."""
+
+DOMAIN = "goatbot"
+
+APP_ID = "1802238967805726722"
+IDP_BASE_URL = "https://idp.okiot.net"
+API_BASE_URL = "https://api.eu.okiot.net"
+
+DEFAULT_SCAN_INTERVAL = 60
+
+CMD_QUERY_STATE = 34
+CMD_SUBSCRIBE = 40
+CMD_SET_RAIN_SENSOR = 9
+CMD_SET_CUTTING_HEIGHT = 8
+
+CUTTING_HEIGHT_MIN = 20
+CUTTING_HEIGHT_MAX = 70
+CUTTING_HEIGHT_STEP = 5

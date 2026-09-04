@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Goatbot",
+        "description": "Enter the email and password you use in the Goatbot app.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password.",
+      "cannot_connect": "Could not reach the Goatbot cloud. Please try again."
+    },
+    "abort": {
+      "already_configured": "This account is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery": { "name": "Battery" },
+      "task_state": { "name": "Task state" },
+      "work_mode": { "name": "Work mode" },
+      "error_code": { "name": "Error code" },
+      "cutting_height": { "name": "Cutting height" },
+      "total_area": { "name": "Lawn area" },
+      "work_total_time": { "name": "Total operating time" },
+      "firmware_version": { "name": "Firmware version" }
+    },
+    "binary_sensor": {
+      "charging": { "name": "Charging" },
+      "online": { "name": "Online" }
+    },
+    "switch": {
+      "rain_sensor": { "name": "Rain sensor" }
+    },
+    "number": {
+      "cutting_height": { "name": "Cutting height" }
+    }
+  }
+}
