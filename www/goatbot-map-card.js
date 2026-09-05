@@ -47,6 +47,7 @@ class GoatbotMapCard extends HTMLElement {
         </div>
       </ha-card>
       <style>
+        [hidden] { display: none !important; }
         ha-card { overflow: hidden; }
         .content { position: relative; width: 100%; aspect-ratio: 4 / 3; background: var(--card-background-color); }
         svg { display: block; }
