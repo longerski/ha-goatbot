@@ -46,6 +46,26 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
         | LawnMowerEntityFeature.PAUSE
         | LawnMowerEntityFeature.DOCK
     )
+    # Map/position data is a live snapshot for the map card, not something
+    # meaningful to graph historically - `trail` in particular can be a few
+    # thousand points, and all of these change on every MQTT push (~1-2s
+    # while mowing), which would otherwise write a new recorder row that
+    # often.
+    _unrecorded_attributes = frozenset(
+        {
+            "map_graph",
+            "region_info",
+            "base_info",
+            "x",
+            "y",
+            "heading",
+            "cut_progress",
+            "cut_area",
+            "remaining_time",
+            "moving_time",
+            "trail",
+        }
+    )
 
     def __init__(self, coordinator: GoatbotCoordinator, device_id: str) -> None:
         super().__init__(coordinator, device_id)
@@ -78,7 +98,7 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
         realtime.py) and are only present once at least one update has
         arrived since HA started.
         """
-        attrs: dict[str, Any] = {}
+        attrs: dict[str, Any] = {"total_area": self._data.get("totalArea")}
         lawn_map = self._device.get("map")
         if lawn_map:
             attrs["map_graph"] = lawn_map.get("mapGraph")
@@ -90,6 +110,12 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
             attrs["y"] = position.get("y")
             attrs["heading"] = position.get("heading")
             attrs["cut_progress"] = position.get("cut_progress")
+            attrs["cut_area"] = position.get("cut_area")
+            attrs["remaining_time"] = position.get("remaining_time")
+            attrs["moving_time"] = position.get("moving_time")
+        trail = self.coordinator.trail.get(self._device_id)
+        if trail:
+            attrs["trail"] = list(trail)
         return attrs
 
     async def async_start_mowing(self) -> None:
@@ -100,6 +126,7 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
         # publishing its live position trace whenever a mow begins,
         # rather than relying solely on the one-time call at startup.
         await self.coordinator.api.async_trace_start(self._device_id)
+        self.coordinator.reset_trail(self._device_id)
         await self.coordinator.async_request_refresh()
 
     async def async_pause(self) -> None:

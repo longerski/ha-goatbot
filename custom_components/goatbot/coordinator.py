@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 from datetime import timedelta
 from typing import Any
 
@@ -25,10 +26,14 @@ class GoatbotCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     Live position updates arrive out-of-band from the real-time MQTT
     channel (see realtime.py) and are stored separately in
     `live_position`, keyed by device_id, since they're pushed rather
-    than polled.
+    than polled. `trail` accumulates the points seen since the last
+    `reset_trail()` call (made when a mow starts), for drawing what's
+    already been covered.
     """
 
     config_entry: ConfigEntry
+
+    _TRAIL_MAX_POINTS = 3000
 
     def __init__(self, hass: HomeAssistant, api: GoatbotApiClient) -> None:
         super().__init__(
@@ -39,7 +44,12 @@ class GoatbotCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         )
         self.api = api
         self.live_position: dict[str, dict[str, Any]] = {}
+        self.trail: dict[str, deque[list[float]]] = {}
         self.realtime: Any = None  # set to a GoatbotRealtimeClient after setup
+
+    def reset_trail(self, device_id: str) -> None:
+        """Clear the covered-path trail, called when a new mow begins."""
+        self.trail[device_id] = deque(maxlen=self._TRAIL_MAX_POINTS)
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:
@@ -58,5 +68,8 @@ class GoatbotCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         must only be scheduled onto the event loop, never called directly.
         """
         self.live_position[device_id] = position
+        self.trail.setdefault(device_id, deque(maxlen=self._TRAIL_MAX_POINTS)).append(
+            [position["x"], position["y"]]
+        )
         if self.data is not None and device_id in self.data:
             self.async_set_updated_data(self.data)

@@ -154,6 +154,8 @@ class GoatbotRealtimeClient:
             "heading": trace[2] if len(trace) > 2 else None,
             "cut_area": data.get("cutArea"),
             "cut_progress": data.get("cutProgress"),
+            "remaining_time": data.get("remainTime"),
+            "moving_time": data.get("movingTime"),
             "updated_at": time.time(),
         }
         self._hass.loop.call_soon_threadsafe(
