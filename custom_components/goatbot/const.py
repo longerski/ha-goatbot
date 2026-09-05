@@ -25,3 +25,7 @@ TASK_CONTROL_PAUSE = {"cutting_mode": 1}
 CUTTING_HEIGHT_MIN = 20
 CUTTING_HEIGHT_MAX = 70
 CUTTING_HEIGHT_STEP = 5
+
+# How often to call POST /maps/traceKeep to keep a mower publishing its
+# live position to the MQTT trace topic (matches the official app's cadence).
+TRACE_KEEPALIVE_INTERVAL = 20

@@ -107,3 +107,30 @@ class GoatbotApiClient:
             json={"block": True, "data": data},
         )
         return body.get("data", {})
+
+    async def async_get_mqtt_credentials(self) -> dict[str, Any]:
+        """Return connection details for the real-time MQTT-over-WebSocket channel.
+
+        Response has `clientIdPre`, `url`, `username`, `password` - the same
+        four fields the official app uses to open its own MQTT connection.
+        """
+        body = await self._async_request("GET", "/app/authentication")
+        return body["data"]
+
+    async def async_get_active_map(self, device_id: str) -> dict[str, Any] | None:
+        """Return the active lawn map (boundary/zones/dock position), if any."""
+        body = await self._async_request("GET", f"/maps/active?deviceId={device_id}")
+        return body.get("data")
+
+    async def async_trace_start(self, device_id: str) -> None:
+        """Ask the mower to start publishing its live position trace."""
+        await self._async_request("POST", "/maps/traceStart", json={"deviceId": device_id})
+
+    async def async_trace_keep(self, device_id: str) -> None:
+        """Heartbeat that keeps the live position trace flowing.
+
+        The official app calls this roughly every 15-20s while a device's
+        detail screen is open; without it the mower stops publishing to
+        the MQTT trace topic after a short timeout.
+        """
+        await self._async_request("POST", "/maps/traceKeep", json={"deviceId": device_id})

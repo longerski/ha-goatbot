@@ -1,6 +1,8 @@
 """Lawn mower platform for Goatbot."""
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.lawn_mower import (
     LawnMowerActivity,
     LawnMowerEntity,
@@ -66,6 +68,29 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
                 return LawnMowerActivity.DOCKED
             return LawnMowerActivity.PAUSED
         return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the lawn map and live position for a custom map card.
+
+        The map (boundary/zones/dock) comes from the polled `/maps/active`
+        response; `x`/`y`/`heading` are pushed in real time over MQTT (see
+        realtime.py) and are only present once at least one update has
+        arrived since HA started.
+        """
+        attrs: dict[str, Any] = {}
+        lawn_map = self._device.get("map")
+        if lawn_map:
+            attrs["map_graph"] = lawn_map.get("mapGraph")
+            attrs["region_info"] = lawn_map.get("regionInfo")
+            attrs["base_info"] = lawn_map.get("baseInfo")
+        position = self.coordinator.live_position.get(self._device_id)
+        if position:
+            attrs["x"] = position.get("x")
+            attrs["y"] = position.get("y")
+            attrs["heading"] = position.get("heading")
+            attrs["cut_progress"] = position.get("cut_progress")
+        return attrs
 
     async def async_start_mowing(self) -> None:
         await self.coordinator.api.async_send_command(

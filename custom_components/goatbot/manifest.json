@@ -7,6 +7,6 @@
   "issue_tracker": "https://github.com/longerski/ha-goatbot/issues",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "requirements": [],
-  "version": "0.2.0"
+  "requirements": ["paho-mqtt>=2.0.0"],
+  "version": "0.3.0"
 }
