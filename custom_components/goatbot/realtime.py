@@ -108,8 +108,17 @@ class GoatbotRealtimeClient:
         client.on_connect = self._on_connect
         client.on_message = self._on_message
         client.on_disconnect = self._on_disconnect
+        client.enable_logger(_LOGGER)
 
-        client.connect_async(host, port, 0)
+        # NOTE: keepalive=0 (matching the official app's own CONNECT packet,
+        # which disables the MQTT-level ping-keepalive) looks tempting to
+        # mirror exactly, but paho-mqtt also reuses this same value as the
+        # raw socket's settimeout() during the TLS handshake - settimeout(0)
+        # puts the socket in non-blocking mode, which breaks the handshake
+        # with a silent, endlessly-retried ssl.SSLWantReadError. A normal
+        # positive keepalive avoids that; MQTT keepalive is a per-connection
+        # choice, not something the broker requires to match the app's.
+        client.connect_async(host, port, 60)
         client.loop_start()
         return client
 
