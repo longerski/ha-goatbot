@@ -38,6 +38,9 @@
     },
     "number": {
       "cutting_height": { "name": "Cutting height" }
+    },
+    "button": {
+      "stop": { "name": "Stop" }
     }
   }
 }
