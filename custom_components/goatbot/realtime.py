@@ -75,6 +75,20 @@ class GoatbotRealtimeClient:
 
     async def _async_connect(self) -> None:
         creds = await self._api.async_get_mqtt_credentials()
+        client = await self._hass.async_add_executor_job(self._build_and_connect, creds)
+        self._client = client
+
+    def _build_and_connect(self, creds: dict[str, Any]) -> mqtt.Client:
+        """Build, configure and start connecting the MQTT client.
+
+        Runs in an executor: `Client()`/`tls_set()` do blocking file I/O
+        (loading CA certs) that must not happen on the event loop.
+        `connect_async()` + `loop_start()` (rather than the blocking
+        `connect()`) hands the actual socket/TLS handshake to paho's own
+        network thread, which correctly retries on the WantRead/WantWrite
+        conditions a one-shot handshake can hit with the websockets
+        transport.
+        """
         parsed = urlsplit(creds["url"])
         host = parsed.hostname
         port = parsed.port or (443 if parsed.scheme == "wss" else 80)
@@ -94,10 +108,10 @@ class GoatbotRealtimeClient:
         client.on_connect = self._on_connect
         client.on_message = self._on_message
         client.on_disconnect = self._on_disconnect
-        self._client = client
 
-        await self._hass.async_add_executor_job(client.connect, host, port, 0)
+        client.connect_async(host, port, 0)
         client.loop_start()
+        return client
 
     def _on_connect(
         self, client: mqtt.Client, userdata: Any, flags: Any, reason_code: Any, properties: Any
