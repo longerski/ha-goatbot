@@ -123,8 +123,10 @@ class GoatbotRealtimeClient:
             product_id = device.get("productId")
             client.subscribe(f"device/{product_id}/{device_id}/trace", qos=0)
             client.subscribe(f"device/{product_id}/{device_id}/pub", qos=0)
+            _LOGGER.debug("Goatbot MQTT connected, subscribed for device %s", device_id)
 
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: Any) -> None:
+        _LOGGER.debug("Goatbot MQTT message on %s: %s", msg.topic, msg.payload[:200])
         parts = msg.topic.split("/")
         if len(parts) != 4 or parts[0] != "device" or parts[3] != "trace":
             return

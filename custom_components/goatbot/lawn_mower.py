@@ -96,6 +96,10 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
         await self.coordinator.api.async_send_command(
             self._device_id, {"cmdId": CMD_TASK_CONTROL, **TASK_CONTROL_START}
         )
+        # Matches the official app: it (re-)asks the mower to start
+        # publishing its live position trace whenever a mow begins,
+        # rather than relying solely on the one-time call at startup.
+        await self.coordinator.api.async_trace_start(self._device_id)
         await self.coordinator.async_request_refresh()
 
     async def async_pause(self) -> None:
