@@ -67,8 +67,12 @@ class GoatbotMapCard extends HTMLElement {
         .lawn { fill: color-mix(in srgb, var(--success-color, #4caf50) 22%, var(--card-background-color)); stroke: var(--success-color, #4caf50); stroke-width: 0.05; }
         .path { fill: none; stroke: var(--secondary-text-color); stroke-width: 0.04; stroke-dasharray: 0.12 0.1; opacity: 0.7; }
         .trail { fill: none; stroke: #8d6e63; stroke-width: 0.18; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
-        .dock { fill: var(--state-icon-color, #03a9f4); }
-        .mower { fill: #ff6f00; stroke: var(--card-background-color); stroke-width: 0.03; }
+        .dock-base { fill: var(--state-icon-color, #03a9f4); }
+        .dock-post { fill: var(--state-icon-color, #03a9f4); opacity: 0.85; }
+        .dock-bolt { fill: #ffd54f; }
+        .mower-body { fill: #ff6f00; stroke: var(--card-background-color); stroke-width: 0.06; }
+        .mower-nose { fill: #e65100; }
+        .mower-eye { fill: var(--card-background-color); }
         .stats {
           display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 10px 16px;
           font-size: 0.85em; color: var(--primary-text-color); border-top: 1px solid var(--divider-color);
@@ -152,24 +156,34 @@ class GoatbotMapCard extends HTMLElement {
       parts.push(`<polyline class="trail" points="${trailPts}"></polyline>`);
     }
 
-    const iconScale = Math.max(w, h) * 0.045 || 0.15;
+    const iconScale = Math.max(w, h) * 0.05 || 0.18;
 
     if (a.base_info) {
       const [bx, by, bh] = a.base_info;
       const deg = (-(bh || 0) * 180) / Math.PI;
+      // A small charging-station silhouette: a wide base plate the mower
+      // parks on, a raised back post with contacts, and a bolt on it -
+      // drawn in a fixed unit square and scaled, so proportions stay
+      // right at any size.
       parts.push(
-        `<g transform="translate(${fx(bx)},${fy(by)}) rotate(${deg})">` +
-          `<rect x="${-iconScale}" y="${-iconScale}" width="${iconScale * 2}" height="${iconScale * 2}" class="dock" rx="${iconScale * 0.3}"></rect>` +
+        `<g transform="translate(${fx(bx)},${fy(by)}) rotate(${deg}) scale(${iconScale})">` +
+          `<rect class="dock-post" x="-0.35" y="-0.75" width="0.7" height="0.85" rx="0.12"></rect>` +
+          `<rect class="dock-base" x="-0.95" y="0.05" width="1.9" height="0.55" rx="0.15"></rect>` +
+          `<path class="dock-bolt" d="M -0.06,-0.6 L 0.14,-0.6 L -0.02,-0.28 L 0.16,-0.28 L -0.16,0.15 L -0.02,-0.22 L -0.2,-0.22 Z"></path>` +
           `</g>`
       );
     }
 
     if (typeof a.x === "number" && typeof a.y === "number") {
       const deg = (-(a.heading || 0) * 180) / Math.PI;
-      const s = iconScale * 1.3;
+      // A rounded-body mower with a directional nose and a little "eye",
+      // instead of a bare triangle - reads as a mower rather than an
+      // arbitrary marker, and heading is still obvious from the nose.
       parts.push(
-        `<g transform="translate(${fx(a.x)},${fy(a.y)}) rotate(${deg})">` +
-          `<polygon class="mower" points="0,${-s} ${s * 0.8},${s * 0.7} ${-s * 0.8},${s * 0.7}"></polygon>` +
+        `<g transform="translate(${fx(a.x)},${fy(a.y)}) rotate(${deg}) scale(${iconScale})">` +
+          `<rect class="mower-body" x="-0.75" y="-0.85" width="1.5" height="1.7" rx="0.55"></rect>` +
+          `<polygon class="mower-nose" points="0,-1.15 0.32,-0.7 -0.32,-0.7"></polygon>` +
+          `<circle class="mower-eye" cx="0" cy="-0.25" r="0.16"></circle>` +
           `</g>`
       );
     }
