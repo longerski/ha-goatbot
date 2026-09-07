@@ -75,14 +75,14 @@ class GoatbotMapCard extends HTMLElement {
           color: var(--secondary-text-color); font-size: 0.9em; text-align: center; padding: 16px;
           box-sizing: border-box;
         }
-        .lawn { fill: color-mix(in srgb, var(--success-color, #4caf50) 22%, var(--card-background-color)); stroke: var(--success-color, #4caf50); stroke-width: 0.05; }
+        .lawn { fill: #d9e9fa; stroke: #a9cbec; stroke-width: 0.05; }
+        .lawn-outline { fill: none; stroke: #a9cbec; stroke-width: 0.05; }
         .path { fill: none; stroke: var(--secondary-text-color); stroke-width: 0.04; stroke-dasharray: 0.12 0.1; opacity: 0.7; }
-        .nogo { fill: rgba(244, 67, 54, 0.65); stroke: #c62828; stroke-width: 0.06; }
-        .nogo-point { fill: #f44336; stroke: var(--card-background-color); stroke-width: 0.03; }
-        .trail { fill: none; stroke: #8d6e63; stroke-width: 0.18; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
-        .dock-base { fill: var(--state-icon-color, #03a9f4); }
-        .dock-post { fill: var(--state-icon-color, #03a9f4); opacity: 0.85; }
-        .dock-bolt { fill: #ffd54f; }
+        .nogo { fill: #f2c2cc; stroke: #dd93a5; stroke-width: 0.05; }
+        .nogo-point { fill: #d6547a; stroke: var(--card-background-color); stroke-width: 0.03; }
+        .trail { fill: none; stroke: #9e9e9e; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
+        .dock-circle { fill: #212121; }
+        .dock-bolt { fill: #fafafa; }
         .mower-body { fill: #ff6f00; stroke: var(--card-background-color); stroke-width: 0.06; }
         .mower-nose { fill: #e65100; }
         .mower-eye { fill: var(--card-background-color); }
@@ -168,8 +168,12 @@ class GoatbotMapCard extends HTMLElement {
 
     const parts = [];
     if (boundary.length) {
+      // Outline only - the mowable zone(s) below provide the actual fill.
+      // Filling this too double-layers wherever a zone overlaps it (which
+      // is most of the map), making the color uneven instead of the flat
+      // fill the official app uses.
       const boundaryPts = boundary.map(([x, y]) => `${fx(x)},${fy(y)}`).join(" ");
-      parts.push(`<polygon class="lawn" points="${boundaryPts}"></polygon>`);
+      parts.push(`<polygon class="lawn-outline" points="${boundaryPts}"></polygon>`);
     }
 
     const iconScale = Math.max(w, h) * 0.05 || 0.18;
@@ -196,29 +200,32 @@ class GoatbotMapCard extends HTMLElement {
             parts.push(`<polygon class="nogo" points="${pts}"></polygon>`);
           }
         } else {
-          // regionType 1 (or unrecognized): a mowable zone.
-          parts.push(`<polygon class="lawn" points="${pts}" opacity="0.5"></polygon>`);
+          // regionType 1 (or unrecognized): a mowable zone - the actual
+          // fill for the map, at full strength (see the boundary note
+          // above for why the outer boundary itself isn't also filled).
+          parts.push(`<polygon class="lawn" points="${pts}"></polygon>`);
         }
       }
     }
 
     if (trail.length > 1) {
+      // A thick swath, not a thin line - reads as "area already covered"
+      // the way the official app draws it, rather than a squiggly trace.
+      const trailWidth = Math.max(w, h) * 0.02 || 0.3;
       const trailPts = trail.map(([x, y]) => `${fx(x)},${fy(y)}`).join(" ");
-      parts.push(`<polyline class="trail" points="${trailPts}"></polyline>`);
+      parts.push(
+        `<polyline class="trail" points="${trailPts}" style="stroke-width:${trailWidth}"></polyline>`
+      );
     }
 
     if (!mapping && a.base_info) {
-      const [bx, by, bh] = a.base_info;
-      const deg = this._headingDeg(bh);
-      // A small charging-station silhouette: a wide base plate the mower
-      // parks on, a raised back post with contacts, and a bolt on it -
-      // drawn in a fixed unit square and scaled, so proportions stay
-      // right at any size.
+      const [bx, by] = a.base_info;
+      // A simple black circle with a bolt, matching the official app's
+      // dock marker.
       parts.push(
-        `<g transform="translate(${fx(bx)},${fy(by)}) rotate(${deg}) scale(${iconScale})">` +
-          `<rect class="dock-post" x="-0.35" y="-0.75" width="0.7" height="0.85" rx="0.12"></rect>` +
-          `<rect class="dock-base" x="-0.95" y="0.05" width="1.9" height="0.55" rx="0.15"></rect>` +
-          `<path class="dock-bolt" d="M -0.06,-0.6 L 0.14,-0.6 L -0.02,-0.28 L 0.16,-0.28 L -0.16,0.15 L -0.02,-0.22 L -0.2,-0.22 Z"></path>` +
+        `<g transform="translate(${fx(bx)},${fy(by)}) scale(${iconScale})">` +
+          `<circle class="dock-circle" cx="0" cy="0" r="1"></circle>` +
+          `<path class="dock-bolt" d="M -0.08,-0.62 L 0.16,-0.62 L -0.04,-0.1 L 0.2,-0.1 L -0.22,0.62 L -0.06,-0.02 L -0.28,-0.02 Z"></path>` +
           `</g>`
       );
     }
