@@ -77,7 +77,7 @@ class GoatbotMapCard extends HTMLElement {
         }
         .lawn { fill: color-mix(in srgb, var(--success-color, #4caf50) 22%, var(--card-background-color)); stroke: var(--success-color, #4caf50); stroke-width: 0.05; }
         .path { fill: none; stroke: var(--secondary-text-color); stroke-width: 0.04; stroke-dasharray: 0.12 0.1; opacity: 0.7; }
-        .nogo { fill: rgba(244, 67, 54, 0.35); stroke: #f44336; stroke-width: 0.05; }
+        .nogo { fill: rgba(244, 67, 54, 0.65); stroke: #c62828; stroke-width: 0.06; }
         .nogo-point { fill: #f44336; stroke: var(--card-background-color); stroke-width: 0.03; }
         .trail { fill: none; stroke: #8d6e63; stroke-width: 0.18; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
         .dock-base { fill: var(--state-icon-color, #03a9f4); }
@@ -209,7 +209,7 @@ class GoatbotMapCard extends HTMLElement {
 
     if (!mapping && a.base_info) {
       const [bx, by, bh] = a.base_info;
-      const deg = (-(bh || 0) * 180) / Math.PI;
+      const deg = this._headingDeg(bh);
       // A small charging-station silhouette: a wide base plate the mower
       // parks on, a raised back post with contacts, and a bolt on it -
       // drawn in a fixed unit square and scaled, so proportions stay
@@ -224,7 +224,7 @@ class GoatbotMapCard extends HTMLElement {
     }
 
     if (typeof a.x === "number" && typeof a.y === "number") {
-      const deg = (-(a.heading || 0) * 180) / Math.PI;
+      const deg = this._headingDeg(a.heading);
       // A rounded-body mower with a directional nose and a little "eye",
       // instead of a bare triangle - reads as a mower rather than an
       // arbitrary marker, and heading is still obvious from the nose.
@@ -243,6 +243,25 @@ class GoatbotMapCard extends HTMLElement {
     } else {
       this._renderStats(a);
     }
+  }
+
+  /**
+   * Convert a native `heading` (radians) into the SVG `rotate()` degrees
+   * that actually point an icon's nose the right way on screen.
+   *
+   * Derived empirically against the real live trail: `heading` is the
+   * standard math bearing in the native (Y-up) frame, i.e. the movement
+   * vector is (cos(heading), sin(heading)). Since this card mirrors Y for
+   * SVG (fy(y) = -y), that vector becomes (cos(heading), -sin(heading))
+   * on screen. Icons are drawn nose-up at local (0,-1) before rotation,
+   * and SVG's rotate() turns that into (sin(deg), -cos(deg)). Solving
+   * sin(deg) = cos(heading) and cos(deg) = sin(heading) gives
+   * deg = 90 - heading_in_degrees - not deg = -heading_in_degrees, which
+   * is what a first guess (mirroring the flip applied to positions) would
+   * suggest, and which pointed the nose roughly 90° off the real heading.
+   */
+  _headingDeg(headingRad) {
+    return 90 - ((headingRad || 0) * 180) / Math.PI;
   }
 
   _renderStats(a) {
