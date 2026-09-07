@@ -21,6 +21,17 @@
  * boundary polygon (observed ~0.8 units off) - so the viewBox here is
  * computed directly from every point actually being drawn instead of
  * trusting that header.
+ *
+ * region_info regionType: 1 = mowable zone, 2 = departure path (dock to
+ * zone), 3 = no-go/obstacle zone (a single-point trace is a point
+ * obstacle rather than an area).
+ *
+ * Mapping-mode note: while work_mode is "mapping" (a fresh "Create Map"
+ * perimeter lap), map_graph/region_info/base_info still describe the OLD
+ * map - the new one only becomes active once the lap finishes - so mixing
+ * them with the live trail would draw two unrelated coordinate spaces on
+ * top of each other. The stale map is ignored entirely during mapping;
+ * only the live trail/position are shown.
  */
 class GoatbotMapCard extends HTMLElement {
   setConfig(config) {
@@ -66,6 +77,8 @@ class GoatbotMapCard extends HTMLElement {
         }
         .lawn { fill: color-mix(in srgb, var(--success-color, #4caf50) 22%, var(--card-background-color)); stroke: var(--success-color, #4caf50); stroke-width: 0.05; }
         .path { fill: none; stroke: var(--secondary-text-color); stroke-width: 0.04; stroke-dasharray: 0.12 0.1; opacity: 0.7; }
+        .nogo { fill: rgba(244, 67, 54, 0.35); stroke: #f44336; stroke-width: 0.05; }
+        .nogo-point { fill: #f44336; stroke: var(--card-background-color); stroke-width: 0.03; }
         .trail { fill: none; stroke: #8d6e63; stroke-width: 0.18; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
         .dock-base { fill: var(--state-icon-color, #03a9f4); }
         .dock-post { fill: var(--state-icon-color, #03a9f4); opacity: 0.85; }
@@ -159,12 +172,31 @@ class GoatbotMapCard extends HTMLElement {
       parts.push(`<polygon class="lawn" points="${boundaryPts}"></polygon>`);
     }
 
+    const iconScale = Math.max(w, h) * 0.05 || 0.18;
+
     if (!mapping) {
       for (const region of a.region_info || []) {
-        const pts = (region.regionTrace || []).map(([x, y]) => `${fx(x)},${fy(y)}`).join(" ");
+        const trace = region.regionTrace || [];
+        const pts = trace.map(([x, y]) => `${fx(x)},${fy(y)}`).join(" ");
         if (region.regionType === 2) {
+          // Departure path: the route from the dock out to a zone.
           parts.push(`<polyline class="path" points="${pts}"></polyline>`);
+        } else if (region.regionType === 3) {
+          // No-go / obstacle zone. A single-point trace is a point
+          // obstacle rather than an area - draw a small marker instead
+          // of a degenerate polygon.
+          if (trace.length <= 1) {
+            if (trace.length === 1) {
+              const [x, y] = trace[0];
+              parts.push(
+                `<circle class="nogo-point" cx="${fx(x)}" cy="${fy(y)}" r="${iconScale * 0.4}"></circle>`
+              );
+            }
+          } else {
+            parts.push(`<polygon class="nogo" points="${pts}"></polygon>`);
+          }
         } else {
+          // regionType 1 (or unrecognized): a mowable zone.
           parts.push(`<polygon class="lawn" points="${pts}" opacity="0.5"></polygon>`);
         }
       }
@@ -174,8 +206,6 @@ class GoatbotMapCard extends HTMLElement {
       const trailPts = trail.map(([x, y]) => `${fx(x)},${fy(y)}`).join(" ");
       parts.push(`<polyline class="trail" points="${trailPts}"></polyline>`);
     }
-
-    const iconScale = Math.max(w, h) * 0.05 || 0.18;
 
     if (!mapping && a.base_info) {
       const [bx, by, bh] = a.base_info;
