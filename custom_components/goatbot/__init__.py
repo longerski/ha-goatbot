@@ -45,6 +45,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = GoatbotCoordinator(hass, api)
     await coordinator.async_config_entry_first_refresh()
 
+    for device_id in coordinator.data:
+        await coordinator.async_load_trail(device_id)
+
     coordinator.realtime = GoatbotRealtimeClient(hass, api, coordinator)
     try:
         await coordinator.realtime.async_start()

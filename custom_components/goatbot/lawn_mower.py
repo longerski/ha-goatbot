@@ -136,7 +136,7 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
         # publishing its live position trace whenever a mow begins,
         # rather than relying solely on the one-time call at startup.
         await self.coordinator.api.async_trace_start(self._device_id)
-        self.coordinator.reset_trail(self._device_id)
+        await self.coordinator.async_reset_trail(self._device_id)
         await self.coordinator.async_request_refresh()
 
     async def async_pause(self) -> None:
