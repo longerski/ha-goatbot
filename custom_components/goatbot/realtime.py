@@ -74,6 +74,17 @@ class GoatbotRealtimeClient:
                 _LOGGER.debug("traceKeep failed for %s: %s", device_id, err)
 
     async def _async_connect(self) -> None:
+        if self._client is not None:
+            # Tear down any previous connection first. Without this, a
+            # reconnect just overwrote self._client while the old paho
+            # Client kept its own background thread (and its own
+            # reconnect_on_failure retries) running forever, leaking one
+            # extra live MQTT connection per reconnect - each one still
+            # receiving and re-delivering every message.
+            old_client, self._client = self._client, None
+            await self._hass.async_add_executor_job(old_client.loop_stop)
+            await self._hass.async_add_executor_job(old_client.disconnect)
+
         creds = await self._api.async_get_mqtt_credentials()
         client = await self._hass.async_add_executor_job(self._build_and_connect, creds)
         self._client = client
