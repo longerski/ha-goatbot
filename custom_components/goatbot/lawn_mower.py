@@ -21,10 +21,12 @@ from .const import (
 from .coordinator import GoatbotCoordinator
 from .entity import GoatbotEntity
 
-# task_state values observed from the cloud API/MQTT while mowing or
-# heading back to the dock (both "start" and "running" show up during
-# each of those phases).
-_ACTIVE_TASK_STATES = {"start", "running"}
+# task_state prefixes observed from the cloud API/MQTT while the mower is
+# actively doing something (mowing, heading to/from the dock, running a
+# fresh "Create Map" perimeter lap). Matched as a prefix rather than an
+# exact set since the vendor has already been seen appending suffixes to
+# "running" for different task types (e.g. "running_used" while mapping).
+_ACTIVE_TASK_STATE_PREFIXES = ("start", "running")
 
 
 async def async_setup_entry(
@@ -64,6 +66,7 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
             "remaining_time",
             "moving_time",
             "trail",
+            "work_mode",
         }
     )
 
@@ -75,10 +78,14 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
     def activity(self) -> LawnMowerActivity | None:
         if self._state.get("errorCode"):
             return LawnMowerActivity.ERROR
-        task_state = self._data.get("task_state")
+        task_state = self._data.get("task_state") or ""
+        work_mode = self._data.get("work_mode")
         if task_state == "pause":
             return LawnMowerActivity.PAUSED
-        if task_state in _ACTIVE_TASK_STATES:
+        # work_mode "mapping" covers a "Create Map" perimeter lap, which
+        # isn't a normal mow but is just as much "the mower is moving" as
+        # far as this entity's activity is concerned.
+        if work_mode == "mapping" or task_state.startswith(_ACTIVE_TASK_STATE_PREFIXES):
             return LawnMowerActivity.MOWING
         if task_state == "idle":
             # "idle" covers both "docked and charging" and "stopped out on
@@ -98,7 +105,10 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
         realtime.py) and are only present once at least one update has
         arrived since HA started.
         """
-        attrs: dict[str, Any] = {"total_area": self._data.get("totalArea")}
+        attrs: dict[str, Any] = {
+            "total_area": self._data.get("totalArea"),
+            "work_mode": self._data.get("work_mode"),
+        }
         lawn_map = self._device.get("map")
         if lawn_map:
             attrs["map_graph"] = lawn_map.get("mapGraph")

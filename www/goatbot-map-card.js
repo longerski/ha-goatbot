@@ -97,8 +97,14 @@ class GoatbotMapCard extends HTMLElement {
   _render(entity) {
     this._ensureShell();
     const a = entity.attributes;
-    const mapGraph = a.map_graph;
-    if (!mapGraph || mapGraph.length < 2) {
+    // While a fresh "Create Map" perimeter lap is in progress, map_graph/
+    // region_info/base_info still describe the OLD map (the new one only
+    // becomes active once the lap finishes) - showing them alongside the
+    // live trail mixes two unrelated coordinate spaces and looks broken.
+    // Ignore the stale map entirely and just track the live trail instead.
+    const mapping = a.work_mode === "mapping";
+    const mapGraph = !mapping ? a.map_graph : null;
+    if (!mapping && (!mapGraph || mapGraph.length < 2)) {
       this._svg.hidden = true;
       this._empty.hidden = false;
       this._empty.textContent = "No active map yet - create one in the Goatbot app.";
@@ -111,14 +117,18 @@ class GoatbotMapCard extends HTMLElement {
     const fx = (x) => x;
     const fy = (y) => -y; // mirror: cloud coords are Y-up, SVG is Y-down
 
-    const boundary = mapGraph.slice(1);
+    const boundary = mapGraph ? mapGraph.slice(1) : [];
     const trail = Array.isArray(a.trail) ? a.trail : [];
 
     // Bounding box from every point actually drawn - map_graph[0]'s stated
     // bounding box doesn't reliably match the boundary polygon (see file
     // header), so don't use it for the viewBox.
-    const allPoints = [...boundary, ...(a.region_info || []).flatMap((r) => r.regionTrace || [])];
-    if (a.base_info) allPoints.push(a.base_info);
+    const allPoints = [
+      ...boundary,
+      ...(mapping ? [] : (a.region_info || []).flatMap((r) => r.regionTrace || [])),
+      ...trail,
+    ];
+    if (!mapping && a.base_info) allPoints.push(a.base_info);
     if (typeof a.x === "number" && typeof a.y === "number") allPoints.push([a.x, a.y]);
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const [x, y] of allPoints) {
@@ -126,6 +136,10 @@ class GoatbotMapCard extends HTMLElement {
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
+    }
+    if (!Number.isFinite(minX)) {
+      // No points at all yet (e.g. mapping just started, no trace received).
+      minX = -2; maxX = 2; minY = -2; maxY = 2;
     }
     const w = maxX - minX || 1;
     const h = maxY - minY || 1;
@@ -139,15 +153,20 @@ class GoatbotMapCard extends HTMLElement {
     const viewH = h + 2 * pad;
     this._svg.setAttribute("viewBox", `${viewMinX} ${viewMinY} ${viewW} ${viewH}`);
 
-    const boundaryPts = boundary.map(([x, y]) => `${fx(x)},${fy(y)}`).join(" ");
-    const parts = [`<polygon class="lawn" points="${boundaryPts}"></polygon>`];
+    const parts = [];
+    if (boundary.length) {
+      const boundaryPts = boundary.map(([x, y]) => `${fx(x)},${fy(y)}`).join(" ");
+      parts.push(`<polygon class="lawn" points="${boundaryPts}"></polygon>`);
+    }
 
-    for (const region of a.region_info || []) {
-      const pts = (region.regionTrace || []).map(([x, y]) => `${fx(x)},${fy(y)}`).join(" ");
-      if (region.regionType === 2) {
-        parts.push(`<polyline class="path" points="${pts}"></polyline>`);
-      } else {
-        parts.push(`<polygon class="lawn" points="${pts}" opacity="0.5"></polygon>`);
+    if (!mapping) {
+      for (const region of a.region_info || []) {
+        const pts = (region.regionTrace || []).map(([x, y]) => `${fx(x)},${fy(y)}`).join(" ");
+        if (region.regionType === 2) {
+          parts.push(`<polyline class="path" points="${pts}"></polyline>`);
+        } else {
+          parts.push(`<polygon class="lawn" points="${pts}" opacity="0.5"></polygon>`);
+        }
       }
     }
 
@@ -158,7 +177,7 @@ class GoatbotMapCard extends HTMLElement {
 
     const iconScale = Math.max(w, h) * 0.05 || 0.18;
 
-    if (a.base_info) {
+    if (!mapping && a.base_info) {
       const [bx, by, bh] = a.base_info;
       const deg = (-(bh || 0) * 180) / Math.PI;
       // A small charging-station silhouette: a wide base plate the mower
@@ -189,7 +208,11 @@ class GoatbotMapCard extends HTMLElement {
     }
 
     this._svg.innerHTML = parts.join("");
-    this._renderStats(a);
+    if (mapping) {
+      this._stats.innerHTML = this._stat("Stav", "Vytváří se nová mapa…");
+    } else {
+      this._renderStats(a);
+    }
   }
 
   _renderStats(a) {
