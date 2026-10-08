@@ -1,11 +1,19 @@
 /**
  * goatbot-map-card
  *
- * Renders the Goatbot mower's lawn map (boundary/zones/dock), the path
- * already covered, and its live position as an SVG, plus a small stats
+ * Renders the Goatbot mower's lawn map (boundary/zones/dock), the area
+ * already mown, and its live position as an SVG, plus a small stats
  * row - using attributes exposed by the lawn_mower.* entity from the
  * goatbot integration (map_graph, region_info, base_info, x, y, heading,
- * cut_progress, cut_area, total_area, remaining_time, moving_time, trail).
+ * cut_progress, cut_area, total_area, remaining_time, moving_time, trail,
+ * coverage).
+ *
+ * "coverage" is the real record of what's been mown: a compact base64
+ * bitmap of ~30 cm grid cells the mower has driven through, from the
+ * integration's coordinator. It survives docking and HA restarts, and the
+ * "Posečeno" stat is computed straight from it so the number matches the
+ * green area on screen. `trail` is now just a thin live tail showing the
+ * mower's most recent path.
  *
  * Config:
  *   type: custom:goatbot-map-card
@@ -80,7 +88,8 @@ class GoatbotMapCard extends HTMLElement {
         .path { fill: none; stroke: var(--secondary-text-color); stroke-width: 0.04; stroke-dasharray: 0.12 0.1; opacity: 0.7; }
         .nogo { fill: #f2c2cc; stroke: #dd93a5; stroke-width: 0.05; }
         .nogo-point { fill: #d6547a; stroke: var(--card-background-color); stroke-width: 0.03; }
-        .trail { fill: none; stroke: #9e9e9e; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
+        .coverage { fill: #7cb342; fill-opacity: 0.42; stroke: none; }
+        .trail { fill: none; stroke: #ff8f00; stroke-width: 0.045; stroke-linecap: round; stroke-linejoin: round; opacity: 0.6; }
         .dock-circle { fill: #212121; }
         .dock-bolt { fill: #fafafa; }
         .mower-body { fill: #ff6f00; stroke: var(--card-background-color); stroke-width: 0.06; }
@@ -132,6 +141,7 @@ class GoatbotMapCard extends HTMLElement {
 
     const boundary = mapGraph ? mapGraph.slice(1) : [];
     const trail = Array.isArray(a.trail) ? a.trail : [];
+    const coverage = !mapping ? this._decodeCoverage(a.coverage) : null;
 
     // Bounding box from every point actually drawn - map_graph[0]'s stated
     // bounding box doesn't reliably match the boundary polygon (see file
@@ -143,6 +153,7 @@ class GoatbotMapCard extends HTMLElement {
     ];
     if (!mapping && a.base_info) allPoints.push(a.base_info);
     if (typeof a.x === "number" && typeof a.y === "number") allPoints.push([a.x, a.y]);
+    if (coverage) allPoints.push(coverage.min, coverage.max);
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const [x, y] of allPoints) {
       if (x < minX) minX = x;
@@ -208,14 +219,17 @@ class GoatbotMapCard extends HTMLElement {
       }
     }
 
+    // The mown area: one <path> of all covered grid cells, laid over the
+    // lawn fill. This is the authoritative "what's been cut" layer.
+    if (coverage && coverage.d) {
+      parts.push(`<path class="coverage" d="${coverage.d}"></path>`);
+    }
+
     if (trail.length > 1) {
-      // A thick swath, not a thin line - reads as "area already covered"
-      // the way the official app draws it, rather than a squiggly trace.
-      const trailWidth = Math.max(w, h) * 0.02 || 0.3;
+      // Thin live tail - just the mower's most recent path. The green
+      // coverage layer above is what actually shows "already mown".
       const trailPts = trail.map(([x, y]) => `${fx(x)},${fy(y)}`).join(" ");
-      parts.push(
-        `<polyline class="trail" points="${trailPts}" style="stroke-width:${trailWidth}"></polyline>`
-      );
+      parts.push(`<polyline class="trail" points="${trailPts}"></polyline>`);
     }
 
     if (!mapping && a.base_info) {
@@ -248,8 +262,53 @@ class GoatbotMapCard extends HTMLElement {
     if (mapping) {
       this._stats.innerHTML = this._stat("Stav", "Vytváří se nová mapa…");
     } else {
-      this._renderStats(a);
+      this._renderStats(a, coverage);
     }
+  }
+
+  _n(v) {
+    // Trim float noise in generated path data.
+    return Math.round(v * 1000) / 1000;
+  }
+
+  /**
+   * Decode the `coverage` attribute (a base64 bitmap of mown ~30 cm grid
+   * cells) into an SVG path plus its bounds and mown area. Returns null if
+   * absent or malformed.
+   */
+  _decodeCoverage(cov) {
+    if (!cov || typeof cov.bits !== "string" || !cov.cols || !cov.rows) return null;
+    const cell = typeof cov.cell === "number" ? cov.cell : 0.3;
+    const [ox, oy] = Array.isArray(cov.origin) ? cov.origin : [0, 0];
+    const cols = cov.cols | 0;
+    const rows = cov.rows | 0;
+    if (cols <= 0 || rows <= 0 || cols * rows > 400000) return null;
+    let bytes;
+    try {
+      bytes = atob(cov.bits);
+    } catch (e) {
+      return null;
+    }
+    let d = "";
+    let count = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const bit = r * cols + c;
+        if (!(bytes.charCodeAt(bit >> 3) & (1 << (bit & 7)))) continue;
+        count++;
+        const x = this._n(ox + c * cell);
+        const yTop = this._n(-(oy + (r + 1) * cell)); // fy() of the cell's top edge
+        const s = this._n(cell);
+        d += `M${x} ${yTop}h${s}v${s}h${-s}z`;
+      }
+    }
+    const cells = typeof cov.count === "number" ? cov.count : count;
+    return {
+      d,
+      area: cells * cell * cell,
+      min: [ox, oy],
+      max: [ox + cols * cell, oy + rows * cell],
+    };
   }
 
   /**
@@ -271,21 +330,33 @@ class GoatbotMapCard extends HTMLElement {
     return 90 - ((headingRad || 0) * 180) / Math.PI;
   }
 
-  _renderStats(a) {
+  _renderStats(a, coverage) {
     const rows = [];
     const totalArea = typeof a.total_area === "number" ? a.total_area : null;
-    const cutArea =
-      typeof a.cut_area === "number"
-        ? a.cut_area
-        : totalArea != null && typeof a.cut_progress === "number"
-        ? (totalArea * a.cut_progress) / 100
+
+    // Prefer the mown area measured straight from the coverage grid (it
+    // matches the green on screen and survives docking); fall back to the
+    // mower's own reported cut_area / cut_progress.
+    let cutArea = coverage && typeof coverage.area === "number" ? coverage.area : null;
+    let pct =
+      cutArea != null && totalArea
+        ? Math.round((cutArea / totalArea) * 100)
         : null;
+    if (cutArea == null) {
+      cutArea =
+        typeof a.cut_area === "number"
+          ? a.cut_area
+          : totalArea != null && typeof a.cut_progress === "number"
+          ? (totalArea * a.cut_progress) / 100
+          : null;
+      pct = typeof a.cut_progress === "number" ? a.cut_progress : pct;
+    }
 
     if (totalArea != null) {
       rows.push(this._stat("Plocha", `${totalArea} m²`));
     }
     if (cutArea != null) {
-      rows.push(this._stat("Posečeno", `${cutArea.toFixed(1)} m²${typeof a.cut_progress === "number" ? ` (${a.cut_progress}%)` : ""}`));
+      rows.push(this._stat("Posečeno", `${cutArea.toFixed(1)} m²${pct != null ? ` (${pct}%)` : ""}`));
       if (totalArea != null) {
         rows.push(this._stat("Zbývá", `${Math.max(totalArea - cutArea, 0).toFixed(1)} m²`));
       }
@@ -318,5 +389,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "goatbot-map-card",
   name: "Goatbot Map",
-  description: "Live lawn map, coverage trail and mower position for the Goatbot integration.",
+  description: "Lawn map, mown-area coverage and live mower position for the Goatbot integration.",
 });

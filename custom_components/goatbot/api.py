@@ -45,7 +45,7 @@ class GoatbotApiClient:
                 timeout=REQUEST_TIMEOUT,
             ) as resp:
                 body = await resp.json(content_type=None)
-        except ClientError as err:
+        except (ClientError, TimeoutError) as err:
             raise GoatbotError(f"Network error during login: {err}") from err
 
         if resp.status != 200 or body.get("code") != "0":
@@ -77,7 +77,7 @@ class GoatbotApiClient:
                 **kwargs,
             ) as resp:
                 body = await resp.json(content_type=None)
-        except ClientError as err:
+        except (ClientError, TimeoutError) as err:
             raise GoatbotError(f"Network error calling {path}: {err}") from err
 
         if resp.status == 401 and retry:

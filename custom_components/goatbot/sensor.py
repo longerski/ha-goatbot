@@ -16,7 +16,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import BLADE_RATED_HOURS, DOMAIN
 from .coordinator import GoatbotCoordinator
 from .entity import GoatbotEntity
 
@@ -31,6 +31,17 @@ class GoatbotSensorEntityDescription(SensorEntityDescription):
 def _hours(device: dict[str, Any]) -> float | None:
     seconds = device.get("state", {}).get("workTotalTime")
     return round(seconds / 3600, 1) if seconds is not None else None
+
+
+def _blade_life_remaining(device: dict[str, Any]) -> float | None:
+    """Remaining blade life as a %, falling toward 0 - matches the app's
+    Maintenance Reminder / push notifications ("blades at 5%, replace
+    soon"). Approximate - see BLADE_RATED_HOURS in const.py."""
+    seconds = device.get("state", {}).get("workTotalTime")
+    if seconds is None:
+        return None
+    used_pct = seconds / (BLADE_RATED_HOURS * 3600) * 100
+    return round(max(0.0, 100.0 - used_pct), 1)
 
 
 SENSOR_TYPES: tuple[GoatbotSensorEntityDescription, ...] = (
@@ -75,6 +86,17 @@ SENSOR_TYPES: tuple[GoatbotSensorEntityDescription, ...] = (
         native_unit_of_measurement="h",
         state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=_hours,
+    ),
+    GoatbotSensorEntityDescription(
+        # key/entity_id kept as "blade_wear" (already on 2 dashboards) even
+        # though the value is now remaining life, not a worn/used counter -
+        # see _blade_life_remaining().
+        key="blade_wear",
+        translation_key="blade_wear",
+        native_unit_of_measurement="%",
+        icon="mdi:saw-blade",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_blade_life_remaining,
     ),
     GoatbotSensorEntityDescription(
         key="firmware_version",

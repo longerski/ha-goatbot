@@ -4,8 +4,13 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import (
+    CONF_EMAIL,
+    CONF_PASSWORD,
+    EVENT_HOMEASSISTANT_STOP,
+    Platform,
+)
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -47,6 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     for device_id in coordinator.data:
         await coordinator.async_load_trail(device_id)
+        await coordinator.async_load_coverage(device_id)
 
     coordinator.realtime = GoatbotRealtimeClient(hass, api, coordinator)
     try:
@@ -56,6 +62,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # don't fail the whole config entry just because the real-time
         # channel couldn't be reached.
         _LOGGER.warning("Could not start the real-time position channel: %s", err)
+
+    @callback
+    def _stop_realtime(_event: Event) -> None:
+        """Tear the MQTT channel down promptly on HA shutdown.
+
+        Without this the paho network thread and the reconnect loop keep
+        running through every shutdown stage (~minutes of "still running"
+        warnings) because `async_unload_entry` isn't called on a plain
+        Core stop.
+        """
+        if coordinator.realtime is not None:
+            coordinator.realtime.stop_sync()
+
+    entry.async_on_unload(
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _stop_realtime)
+    )
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

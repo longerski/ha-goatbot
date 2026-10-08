@@ -66,6 +66,7 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
             "remaining_time",
             "moving_time",
             "trail",
+            "coverage",
             "work_mode",
         }
     )
@@ -82,6 +83,16 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
         work_mode = self._data.get("work_mode")
         if task_state == "pause":
             return LawnMowerActivity.PAUSED
+
+        # The vendor cloud leaves the polled /app/devices status frozen for
+        # the entire duration of a mow (task_state stuck at "idle", the
+        # "charging" flag still set from the last time it docked). A live
+        # position trace that's still arriving - and not yet at 100% - means
+        # the mower is out on the lawn right now, whatever the stale
+        # snapshot says.
+        if self.coordinator.is_mowing_live(self._device_id):
+            return LawnMowerActivity.MOWING
+
         # work_mode "mapping" covers a "Create Map" perimeter lap, which
         # isn't a normal mow but is just as much "the mower is moving" as
         # far as this entity's activity is concerned.
@@ -126,6 +137,12 @@ class GoatbotLawnMower(GoatbotEntity, LawnMowerEntity):
         trail = self.coordinator.trail.get(self._device_id)
         if trail:
             attrs["trail"] = list(trail)
+        # Compact base64-bitmap of the mown grid cells (see coordinator).
+        # This - not `trail` - is what the map card fills in as "mown",
+        # and it survives docking and HA restarts.
+        coverage = self.coordinator.coverage_view.get(self._device_id)
+        if coverage:
+            attrs["coverage"] = coverage
         return attrs
 
     async def async_start_mowing(self) -> None:

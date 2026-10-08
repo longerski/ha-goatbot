@@ -44,6 +44,24 @@ class GoatbotRealtimeClient:
         self._client: mqtt.Client | None = None
         self._trace_keepalive_unsub: Any = None
         self._stopped = False
+        self._reconnecting = False
+
+    def _post_to_loop(self, callback: Any, *args: Any) -> None:
+        """call_soon_threadsafe wrapper that swallows a closed/stopping loop.
+
+        Paho's network thread (started by loop_start()) runs independently
+        of the HA event loop and keeps delivering MQTT callbacks even if
+        the loop stops or closes before stop_sync() gets a chance to tear
+        the client down - a clean shutdown race, or an unrelated crash
+        elsewhere. Every message in that window used to throw
+        RuntimeError: Event loop is closed, logged individually by paho
+        as noise (seen 2026-09-16 as a burst of dozens within under a
+        second during an unrelated Core crash).
+        """
+        try:
+            self._hass.loop.call_soon_threadsafe(callback, *args)
+        except RuntimeError:
+            pass
 
     async def async_start(self) -> None:
         self._stopped = False
@@ -65,6 +83,26 @@ class GoatbotRealtimeClient:
             client, self._client = self._client, None
             await self._hass.async_add_executor_job(client.loop_stop)
             await self._hass.async_add_executor_job(client.disconnect)
+
+    def stop_sync(self) -> None:
+        """Best-effort synchronous teardown for the HA shutdown path.
+
+        Called from an `EVENT_HOMEASSISTANT_STOP` listener, where kicking
+        work onto the executor is no longer reliable. `_stopped` stops the
+        reconnect loop from rescheduling; paho's `loop_stop`/`disconnect`
+        are safe to call straight from the event loop.
+        """
+        self._stopped = True
+        if self._trace_keepalive_unsub is not None:
+            self._trace_keepalive_unsub()
+            self._trace_keepalive_unsub = None
+        client, self._client = self._client, None
+        if client is not None:
+            try:
+                client.loop_stop()
+                client.disconnect()
+            except Exception:  # noqa: BLE001 - shutdown, swallow everything
+                pass
 
     async def _async_trace_keepalive(self, _now: Any = None) -> None:
         for device_id in self._coordinator.data:
@@ -138,6 +176,9 @@ class GoatbotRealtimeClient:
     ) -> None:
         if reason_code != 0:
             _LOGGER.warning("Goatbot MQTT connect failed: %s", reason_code)
+            self._post_to_loop(
+                lambda: self._hass.async_create_task(self._async_handle_connect_failure(client))
+            )
             return
         for device_id, device in self._coordinator.data.items():
             product_id = device.get("productId")
@@ -169,7 +210,7 @@ class GoatbotRealtimeClient:
             "moving_time": data.get("movingTime"),
             "updated_at": time.time(),
         }
-        self._hass.loop.call_soon_threadsafe(
+        self._post_to_loop(
             self._coordinator.async_update_live_position, device_id, position
         )
 
@@ -186,20 +227,50 @@ class GoatbotRealtimeClient:
         _LOGGER.debug(
             "Goatbot MQTT disconnected (%s), reconnecting with fresh credentials", reason_code
         )
-        self._hass.loop.call_soon_threadsafe(
+        self._post_to_loop(
             lambda: self._hass.async_create_task(self._async_reconnect_after_delay())
         )
 
+    async def _async_handle_connect_failure(self, client: mqtt.Client) -> None:
+        """Stop paho's own auto-reconnect immediately on a failed connect.
+
+        paho's network thread (loop_start()) retries a failed connect on its
+        own short internal backoff (starting at ~1s), using the SAME
+        credentials that just got rejected - independently of, and much
+        faster than, our own _async_reconnect_after_delay. Left unchecked
+        this hammers the server (seen 2026-09-21: 6 "Not authorized"
+        attempts in under 3s, crashing Core). Stopping this client's loop
+        right away silences that storm; the real retry - with fresh
+        credentials, after a sane delay - still happens via
+        _async_reconnect_after_delay below.
+        """
+        if self._stopped:
+            return
+        if client is self._client:
+            self._client = None
+        await self._hass.async_add_executor_job(client.loop_stop)
+        await self._async_reconnect_after_delay()
+
     async def _async_reconnect_after_delay(self) -> None:
-        if self._stopped:
+        # Single-flight: concurrent callers (disconnect + connect-failure
+        # callbacks, previous failed attempts) used to each run their own
+        # retry chain, so a network outage turned into hundreds of parallel
+        # connection attempts per second and exhausted Core's file descriptors
+        # (2026-10-08 04:15 crash).
+        if self._stopped or self._reconnecting:
             return
-        await asyncio.sleep(_RECONNECT_DELAY)
-        if self._stopped:
-            return
+        self._reconnecting = True
+        delay = _RECONNECT_DELAY
         try:
-            await self._async_connect()
-        except Exception as err:  # noqa: BLE001 - keep retrying regardless of cause
-            _LOGGER.warning("Goatbot MQTT reconnect failed: %s", err)
-            self._hass.loop.call_soon_threadsafe(
-                lambda: self._hass.async_create_task(self._async_reconnect_after_delay())
-            )
+            while not self._stopped:
+                await asyncio.sleep(delay)
+                if self._stopped:
+                    return
+                try:
+                    await self._async_connect()
+                    return
+                except Exception as err:  # noqa: BLE001 - keep retrying regardless of cause
+                    _LOGGER.warning("Goatbot MQTT reconnect failed (retry in %ss): %s", min(delay * 2, 300), err)
+                    delay = min(delay * 2, 300)
+        finally:
+            self._reconnecting = False

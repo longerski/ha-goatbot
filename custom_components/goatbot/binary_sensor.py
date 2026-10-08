@@ -40,6 +40,18 @@ BINARY_SENSOR_TYPES: tuple[GoatbotBinarySensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: bool(d.get("device", {}).get("isOnline")),
     ),
+    GoatbotBinarySensorEntityDescription(
+        key="unfinished_mow_pending",
+        translation_key="unfinished_mow_pending",
+        icon="mdi:progress-clock",
+        # `cover_pause_flag` only appears in state.data while a paused/
+        # unfinished whole-lawn mow is waiting to be resumed - it's what
+        # drives the app's "continue previous work?" prompt. Absent (None)
+        # the rest of the time, so bool() gives a clean False.
+        value_fn=lambda d: bool(
+            d.get("state", {}).get("data", {}).get("cover_pause_flag")
+        ),
+    ),
 )
 
 
@@ -72,4 +84,11 @@ class GoatbotBinarySensor(GoatbotEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
+        if (
+            self.entity_description.key == "charging"
+            and self.coordinator.is_mowing_live(self._device_id)
+        ):
+            # Out on the lawn right now - the polled "charging" flag is
+            # stale, left set from when it last docked.
+            return False
         return self.entity_description.value_fn(self._device)

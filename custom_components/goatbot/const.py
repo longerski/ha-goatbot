@@ -29,3 +29,14 @@ CUTTING_HEIGHT_STEP = 5
 # How often to call POST /maps/traceKeep to keep a mower publishing its
 # live position to the MQTT trace topic (matches the official app's cadence).
 TRACE_KEEPALIVE_INTERVAL = 20
+
+# Rated blade service life, in operating hours. The Goatbot app's
+# "Maintenance Reminder" / push notifications show REMAINING blade life as
+# a percentage (falling toward 0, not a "worn" counter rising toward 100 -
+# confirmed by a push notification reading "blades at 5%, cutting may
+# slip, replace soon", which only makes sense as remaining life). The
+# cloud API has no maintenance endpoint, so this is back-calculated from
+# two app readings: 8 % at workTotalTime 220.3 h (2026-09-09) and 5 % at
+# 227.5 h (2026-09-11) both solve to ~239.5 h - a tight, consistent fit.
+# Adjust this if the HA figure drifts away from what the app shows.
+BLADE_RATED_HOURS = 239.5

@@ -27,11 +27,13 @@
       "cutting_height": { "name": "Cutting height" },
       "total_area": { "name": "Lawn area" },
       "work_total_time": { "name": "Total operating time" },
+      "blade_wear": { "name": "Blade life remaining" },
       "firmware_version": { "name": "Firmware version" }
     },
     "binary_sensor": {
       "charging": { "name": "Charging" },
-      "online": { "name": "Online" }
+      "online": { "name": "Online" },
+      "unfinished_mow_pending": { "name": "Unfinished mow pending" }
     },
     "switch": {
       "rain_sensor": { "name": "Rain sensor" }
@@ -40,7 +42,8 @@
       "cutting_height": { "name": "Cutting height" }
     },
     "button": {
-      "stop": { "name": "Stop" }
+      "stop": { "name": "Stop" },
+      "reset_coverage": { "name": "Reset coverage map" }
     }
   }
 }
